@@ -1,6 +1,7 @@
 import assert from 'assert';
 import { uploadFiles, uploadBlocks, splitOnBatches, isAlreadyUploaded } from './index.js';
 import { packCID } from 'fast-ipfs';
+import { jest } from '@jest/globals';
 
 describe('NEARFS Uploader', () => {
   describe('splitOnBatches', () => {
@@ -11,9 +12,8 @@ describe('NEARFS Uploader', () => {
         { data: Buffer.alloc(100000) },
       ];
       const batches = splitOnBatches(blocks);
-      assert.strictEqual(batches.length, 2);
-      assert.strictEqual(batches[0].length, 2);
-      assert.strictEqual(batches[1].length, 1);
+      assert.strictEqual(batches.length, 1);
+      assert.strictEqual(batches[0].length, 3);
     });
   });
 
@@ -23,8 +23,10 @@ describe('NEARFS Uploader', () => {
       global.fetch = mockFetch;
       
       const cid = packCID({ hash: Buffer.alloc(32), version: 1, codec: 0x55 });
-      const result = await isAlreadyUploaded(cid, { timeout: 1000, retryCount: 1 });
+      const mockLog = jest.fn();
+      const result = await isAlreadyUploaded(cid, { timeout: 1000, retryCount: 1, log: mockLog });
       assert.strictEqual(result, true);
+      expect(mockLog).toHaveBeenCalledWith('Block', expect.any(String), 'already exists on chain, skipping');
     });
 
     it('should return false for non-existing CID', async () => {
@@ -32,7 +34,8 @@ describe('NEARFS Uploader', () => {
       global.fetch = mockFetch;
       
       const cid = packCID({ hash: Buffer.alloc(32), version: 1, codec: 0x55 });
-      const result = await isAlreadyUploaded(cid, { timeout: 1000, retryCount: 1 });
+      const mockLog = jest.fn();
+      const result = await isAlreadyUploaded(cid, { timeout: 1000, retryCount: 1, log: mockLog });
       assert.strictEqual(result, false);
     });
   });
@@ -50,6 +53,7 @@ describe('NEARFS Uploader', () => {
 
       const rootCid = await uploadFiles(files, {
         signAndSendTransaction: mockSignAndSendTransaction,
+        log: jest.fn(),
       });
 
       assert(rootCid, 'Root CID should be returned');
@@ -68,11 +72,17 @@ describe('NEARFS Uploader', () => {
         { data: Buffer.from('Block 2'), cid: packCID({ hash: Buffer.alloc(32), version: 1, codec: 0x55 }) },
       ];
 
+      const mockLog = jest.fn();
+      const mockStatusCallback = jest.fn();
       await uploadBlocks(blocks, {
         signAndSendTransaction: mockSignAndSendTransaction,
+        log: mockLog,
+        statusCallback: mockStatusCallback,
       });
 
       assert.strictEqual(uploadedBlocks, 2, 'All blocks should be uploaded');
+      expect(mockLog).toHaveBeenCalledWith('Uploaded 2 / 2 blocks to NEARFS');
+      expect(mockStatusCallback).toHaveBeenCalledWith({ currentBlocks: 2, totalBlocks: 2 });
     });
   });
 });

@@ -63,7 +63,7 @@ function isExpectedUploadError(e) {
 }
 
 async function uploadBlocks(blocks, options = DEFAULT_OPTIONS) {
-    const { log, statusCallback, signAndSendTransaction } = options;
+    const { log, statusCallback, signAndSendTransaction } = { ...DEFAULT_OPTIONS, ...options };
 
     const THROTTLE_MS = 25;
     const blocksAndStatus = (await Promise.all(blocks.map(async ({ data, cid }, i) => ({ data, cid, uploaded: (await sleep(i * THROTTLE_MS), await isAlreadyUploaded(cid, options)) }))));
@@ -103,14 +103,14 @@ export async function uploadFiles(files, options = DEFAULT_OPTIONS) {
                 dirEntry = { name: dirName, links: [] };
                 dir.links.push(dirEntry);
             }
-            dir = dirEntry.links;
+            dir = dirEntry;
         }
 
         const fileName = path[path.length - 1];
         const hash = computeHash(content);
         const cid = packCID({ hash, version: 1, codec: CODEC_RAW });
         const fileEntry = { name: fileName, cid, size: content.length };
-        dir.push(fileEntry);
+        dir.links.push(fileEntry);
 
         blocksToUpload.push({ data: content, cid });
     }
