@@ -1,5 +1,5 @@
 import timeoutSignal from 'timeout-signal';
-import { cidToString, packCID, writePBNode, CODEC_RAW, CODEC_DAG_PB } from 'fast-ipfs';
+import { cidToString, packCID, writePBNode, CODEC_RAW, CODEC_DAG_PB, readCAR, readBlock } from 'fast-ipfs';
 import sha256 from 'js-sha256';
 
 const computeHash = (data) => Buffer.from(sha256.arrayBuffer(data));
@@ -75,7 +75,7 @@ async function uploadBlocks(blocks, options = DEFAULT_OPTIONS) {
 
     for (let batch of batches) {
         try {
-            await signAndSendTransaction(batch.map(({ data }) => data));
+            await signAndSendTransaction(batch);
         } catch (e) {
             if (!isExpectedUploadError(e)) {
                 throw e;
@@ -156,9 +156,12 @@ export async function uploadCAR(carBuffer, options = DEFAULT_OPTIONS) {
 async function blocksToUpload(carBuffer, options = DEFAULT_OPTIONS) {
     const blocks = readCAR(carBuffer).slice(1).map(b => readBlock(b.data));
     const THROTTLE_MS = 25;
-    const blocksAndStatus = (await Promise.all(blocks.map(async ({ data, cid }, i) => ({ data, cid, uploaded: (await sleep(i * THROTTLE_MS), await isAlreadyUploaded(cid, options)) }))));
-    const filteredBlocks = blocksAndStatus.filter(({ uploaded }) => !uploaded);
-    return filteredBlocks;
+    const blocksAndStatus = await Promise.all(blocks.map(async ({ data, cid }, i) => ({
+        data,
+        cid,
+        uploaded: await sleep(i * THROTTLE_MS).then(() => isAlreadyUploaded(cid, options))
+    })));
+    return blocksAndStatus.filter(({ uploaded }) => !uploaded);
 }
 
 export {

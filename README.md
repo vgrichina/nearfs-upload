@@ -1,6 +1,11 @@
 # NEARFS Uploader
 
-A package to upload files to NEARFS via NEAR transactions or web4.
+A package to upload files to NEARFS via near-api-js (Node.js) or web4 (browser).
+
+This package is built on top of the following projects:
+- [near-api-js](https://github.com/near/near-api-js): NEAR JavaScript API
+- [web4](https://github.com/vgrichina/web4): Web3 + Web 2.0 = Web4
+- [nearfs](https://github.com/vgrichina/nearfs): NEAR File System
 
 ## Installation
 
@@ -14,47 +19,69 @@ npm install nearfs-upload
 
 ```javascript
 import { uploadFiles } from 'nearfs-upload';
+import { connect, keyStores, transactions } from 'near-api-js';
 
-// NEAR transaction implementation
-const signAndSendTransactionNEAR = async (blockDataArray) => {
-  // Implement NEAR transaction logic here
-};
+async function main() {
+  // Set up NEAR connection
+  const keyStore = new keyStores.InMemoryKeyStore();
+  const nearConnection = await connect({
+    networkId: 'testnet',
+    keyStore,
+    nodeUrl: 'https://rpc.testnet.near.org',
+  });
 
-// Web4 implementation
-const signAndSendTransactionWeb4 = async (blockDataArray) => {
-  // Implement Web4 upload logic here
-};
+  // Access NEAR account
+  const accountId = 'your-account.testnet';
+  const account = await nearConnection.account(accountId);
 
-const files = [
-  { name: 'file1.txt', content: Buffer.from('Hello, world!') },
-  { name: 'folder/file2.txt', content: Buffer.from('Nested file') },
-];
+  const signAndSendTransaction = async (blockDataArray) => {
+    return await account.signAndSendTransaction({
+      receiverId: accountId,
+      actions: blockDataArray.map(data => 
+        transactions.functionCall('fs_store', data, '30000000000000', '0')
+      ),
+    });
+  };
 
-// Upload using NEAR transaction
-const rootCidNEAR = await uploadFiles(files, {
-  signAndSendTransaction: signAndSendTransactionNEAR,
-  // other options...
-});
+  // Prepare files for upload
+  const files = [
+    { name: 'file1.txt', content: Buffer.from('Hello, world!') },
+    { name: 'folder/file2.txt', content: Buffer.from('Nested file') },
+  ];
 
-// Upload using Web4
-const rootCidWeb4 = await uploadFiles(files, {
-  signAndSendTransaction: signAndSendTransactionWeb4,
-  // other options...
-});
+  // Upload files
+  const rootCid = await uploadFiles(files, {
+    signAndSendTransaction,
+    log: console.log,
+    statusCallback: ({ currentBlocks, totalBlocks }) => {
+      console.log(`Progress: ${currentBlocks}/${totalBlocks} blocks uploaded`);
+    },
+  });
+
+  console.log('Upload complete. Root CID:', rootCid);
+}
+
+main().catch(console.error);
 ```
 
 ### Uploading CAR Files
+
+To upload a pre-made CAR file, use the `uploadCAR` function:
 
 ```javascript
 import { uploadCAR } from 'nearfs-upload';
 import fs from 'fs';
 
-const carBuffer = fs.readFileSync('your-file.car');
+async function uploadCarFile(signAndSendTransaction) {
+  const carBuffer = fs.readFileSync('your-file.car');
 
-await uploadCAR(carBuffer, {
-  signAndSendTransaction: signAndSendTransactionNEAR, // or signAndSendTransactionWeb4
-  // other options...
-});
+  await uploadCAR(carBuffer, {
+    signAndSendTransaction,
+    log: console.log,
+  });
+
+  console.log('CAR file upload complete');
+}
 ```
 
 ## API
