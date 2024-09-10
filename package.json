@@ -1,0 +1,21 @@
+{
+  "name": "nearfs-upload",
+  "version": "0.0.1",
+  "description": "A package to upload files to NEARFS via NEAR transactions or web4",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
+  },
+  "keywords": ["near", "nearfs", "ipfs", "upload", "web4"],
+  "author": "Vlad Grichina",
+  "license": "MIT",
+  "dependencies": {
+    "timeout-signal": "^1.1.0",
+    "fast-ipfs": "^1.0.0",
+    "js-sha256": "^0.9.0"
+  },
+  "devDependencies": {
+    "jest": "^27.0.0"
+  }
+}
