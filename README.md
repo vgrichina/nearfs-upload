@@ -1,10 +1,12 @@
 # NEARFS Uploader
 
-A package to upload files to NEARFS via near-api-js (Node.js) or web4 (browser).
+A package to upload files to [NEARFS](https://github.com/vgrichina/nearfs) via [near-api-js](https://github.com/near/near-api-js) (Node.js/browser) or [web4](https://github.com/vgrichina/web4) (browser).
+
+[NEARFS](https://github.com/vgrichina/nearfs) is a distributed file system compatible with [IPFS](https://ipfs.io/) that uses the [NEAR blockchain](https://near.org/) as a backend. It allows you to store and retrieve files using the NEAR blockchain infrastructure.
 
 This package is built on top of the following projects:
 - [near-api-js](https://github.com/near/near-api-js): NEAR JavaScript API
-- [web4](https://github.com/vgrichina/web4): Web3 + Web 2.0 = Web4
+- [web4](https://github.com/vgrichina/web4): Unstoppable websites onchain
 - [nearfs](https://github.com/vgrichina/nearfs): NEAR File System
 
 ## Installation
@@ -83,6 +85,24 @@ async function uploadCarFile(signAndSendTransaction) {
   console.log('CAR file upload complete');
 }
 ```
+
+### Accessing Uploaded Files
+
+After uploading files, you can access them through the following public gateways:
+
+- https://ipfs.web4.near.page - Access data stored on NEAR mainnet.
+- https://ipfs.web4.testnet.page - Access data stored on NEAR testnet.
+
+These gateways provide IPFS-compatible access to the files stored in NEARFS.
+
+### Subdomain Support
+
+NEARFS supports accessing content via subdomains, allowing you to serve full websites via the NEARFS gateway with isolated security contexts. You can access uploaded content using URLs like:
+
+- `http://<cid>.ipfs.web4.near.page/`
+- `http://<cid>.ipfs.web4.near.page/:path`
+
+This provides a more intuitive way to share and access IPFS content through the NEARFS gateway.
 
 ## API
 
