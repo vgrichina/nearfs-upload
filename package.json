@@ -19,9 +19,14 @@
   "dependencies": {
     "fast-ipfs": "^0.3.0",
     "js-sha256": "^0.9.0",
+    "mri": "^1.2.0",
+    "near-api-js": "^5.0.1",
     "timeout-signal": "^1.1.0"
   },
   "devDependencies": {
     "jest": "^27.0.0"
+  },
+  "bin": {
+    "nearfs-upload": "./cli.js"
   }
 }
