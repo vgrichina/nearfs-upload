@@ -92,6 +92,7 @@ async function setupNearConnection(networkId, accountId, privateKey) {
         networkId,
         keyStore,
         nodeUrl: `https://rpc.${networkId}.near.org`,
+        logger: false
     };
 
     const near = await connect(config);
