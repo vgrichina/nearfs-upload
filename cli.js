@@ -196,19 +196,24 @@ async function main() {
             console.log(usage);
             process.exit(1);
         }
-
         console.log('\nUpload complete!');
         let gatewayUrl;
+        let isCustomGateway = false;
         if (argv.network === 'mainnet') {
             gatewayUrl = 'https://ipfs.web4.near.page';
         } else if (argv.network === 'testnet') {
             gatewayUrl = 'https://ipfs.web4.testnet.page';
         } else if (argv.gatewayUrl) {
             gatewayUrl = argv.gatewayUrl;
+            isCustomGateway = true;
         } else {
             throw new Error('Network must be either "mainnet" or "testnet", or provide a custom gateway URL with --gateway-url');
         }
         console.log(`Access your files at: ${gatewayUrl}/ipfs/${rootCid}`);
+        if (!isCustomGateway) {
+            const gatewayDomain = gatewayUrl.replace('https://', '');
+            console.log(`Or via subdomain: https://${rootCid}.${gatewayDomain}`);
+        }
     } catch (error) {
         console.error('Error:', error.message);
         process.exit(1);
