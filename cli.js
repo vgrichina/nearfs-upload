@@ -9,7 +9,7 @@ import os from 'os';
 
 const argv = mri(process.argv.slice(2), {
     boolean: ['help'],
-    string: ['network', 'account-id', 'private-key', 'gateway-url'],
+    string: ['network', 'account-id', 'private-key', 'gateway-url', 'node-url'],
     alias: {
         h: 'help',
         n: 'network',
@@ -34,6 +34,7 @@ const usage = `
     -a, --account-id         NEAR account ID (can also use NEAR_ACCOUNT_ID env var)
     -k, --private-key        NEAR account private key (can also use NEAR_PRIVATE_KEY env var)
     --gateway-url            Custom IPFS gateway URL for non-mainnet/testnet networks
+    --node-url              Custom NEAR RPC node URL (default: https://rpc.{network}.near.org)
 
   The CLI will look for credentials in the following order:
   1. Command line arguments
@@ -45,6 +46,7 @@ const usage = `
     nearfs-upload upload-car ./my-file.car --account-id example.testnet
     NEAR_ACCOUNT_ID=example.testnet NEAR_PRIVATE_KEY=ed25519:... nearfs-upload upload ./my-files
     nearfs-upload upload ./my-files --network custom --gateway-url https://ipfs.custom.example.com
+    nearfs-upload upload ./my-files --node-url https://my-custom-near-node.com
 `;
 
 async function loadNearCliCredentials(networkId, accountId) {
@@ -91,7 +93,7 @@ async function setupNearConnection(networkId, accountId, privateKey) {
     const config = {
         networkId,
         keyStore,
-        nodeUrl: `https://rpc.${networkId}.near.org`,
+        nodeUrl: argv.nodeUrl || `https://rpc.${networkId}.near.org`,
         logger: false
     };
 
