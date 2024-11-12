@@ -14,7 +14,11 @@ const argv = mri(process.argv.slice(2), {
         h: 'help',
         n: 'network',
         a: 'account-id',
-        k: 'private-key'
+        k: 'private-key',
+        accountId: 'account-id',
+        privateKey: 'private-key',
+        gatewayUrl: 'gateway-url',
+        nodeUrl: 'node-url'
     },
     default: {
         network: 'testnet'
