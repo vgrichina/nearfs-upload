@@ -26,11 +26,9 @@ const argv = mri(process.argv.slice(2), {
 });
 
 const usage = `
-  Usage: nearfs-upload <command> [options] <path>
+  Usage: nearfs-upload [options] <path>
 
-  Commands:
-    upload     Upload files or directories to NEARFS
-    upload-car Upload a CAR file to NEARFS
+  Upload files, directories, or CAR files to NEARFS. CAR files are detected by .car extension.
 
   Options:
     -h, --help                Show this help message
@@ -46,11 +44,11 @@ const usage = `
   3. near-cli credentials (~/.near-credentials/{network}/{accountId}.json)
 
   Examples:
-    nearfs-upload upload ./my-files --account-id example.testnet --private-key "ed25519:..."
-    nearfs-upload upload-car ./my-file.car --account-id example.testnet
-    NEAR_ACCOUNT_ID=example.testnet NEAR_PRIVATE_KEY=ed25519:... nearfs-upload upload ./my-files
-    nearfs-upload upload ./my-files --network custom --gateway-url https://ipfs.custom.example.com
-    nearfs-upload upload ./my-files --node-url https://my-custom-near-node.com
+    nearfs-upload ./my-files --account-id example.testnet --private-key "ed25519:..."
+    nearfs-upload ./my-file.car --account-id example.testnet
+    NEAR_ACCOUNT_ID=example.testnet NEAR_PRIVATE_KEY=ed25519:... nearfs-upload ./my-files
+    nearfs-upload ./my-files --network custom --gateway-url https://ipfs.custom.example.com
+    nearfs-upload ./my-files --node-url https://my-custom-near-node.com
 `;
 
 async function loadNearCliCredentials(networkId, accountId) {
@@ -134,8 +132,7 @@ async function main() {
         process.exit(0);
     }
 
-    const command = argv._[0];
-    const filePath = argv._[1];
+    const filePath = argv._[0];
 
     if (!filePath) {
         console.error('Error: Missing file path');
@@ -178,7 +175,12 @@ async function main() {
         };
 
         let rootCid;
-        if (command === 'upload') {
+        const isCarFile = path.extname(filePath).toLowerCase() === '.car';
+
+        if (isCarFile) {
+            const carBuffer = await fs.readFile(filePath);
+            rootCid = await uploadCAR(carBuffer, options);
+        } else {
             const stats = await fs.stat(filePath);
             const files = stats.isDirectory() 
                 ? await readFilesRecursively(filePath)
@@ -188,14 +190,8 @@ async function main() {
                   }];
 
             rootCid = await uploadFiles(files, options);
-        } else if (command === 'upload-car') {
-            const carBuffer = await fs.readFile(filePath);
-            rootCid = await uploadCAR(carBuffer, options);
-        } else {
-            console.error('Error: Unknown command');
-            console.log(usage);
-            process.exit(1);
         }
+
         console.log('\nUpload complete!');
         let gatewayUrl;
         let isCustomGateway = false;
