@@ -21,9 +21,9 @@ npm install nearfs-upload
 
 The package provides a command-line tool for easy uploads. After installation, you can use it directly:
 
-    ```bash
-    npx nearfs-upload [options] <path>
-    ```
+```bash
+npx nearfs-upload [options] <path>
+```
 
 The CLI automatically detects the type of upload based on the file extension - you can upload individual files, directories, or CAR files (.car extension) using the same command.
 
@@ -42,20 +42,20 @@ Credentials can be provided in three ways:
 
 Examples:
 
-    ```bash
-    # Upload a directory
-    nearfs-upload ./my-files --account-id example.testnet --private-key "ed25519:..."
+```bash
+# Upload a directory
+nearfs-upload ./my-files --account-id example.testnet --private-key "ed25519:..."
 
-    # Upload a CAR file
-    nearfs-upload ./my-file.car --account-id example.testnet
+# Upload a CAR file
+nearfs-upload ./my-file.car --account-id example.testnet
 
-    # Use environment variables
-    NEAR_ACCOUNT_ID=example.testnet NEAR_PRIVATE_KEY=ed25519:... nearfs-upload ./my-files
+# Use environment variables
+NEAR_ACCOUNT_ID=example.testnet NEAR_PRIVATE_KEY=ed25519:... nearfs-upload ./my-files
 
-    # Custom network configuration
-    nearfs-upload ./my-files --network custom --gateway-url https://ipfs.custom.example.com
-    nearfs-upload ./my-files --node-url https://my-custom-near-node.com
-    ```
+# Custom network configuration
+nearfs-upload ./my-files --network custom --gateway-url https://ipfs.custom.example.com
+nearfs-upload ./my-files --node-url https://my-custom-near-node.com
+```
 
 
 ### Uploading Files
