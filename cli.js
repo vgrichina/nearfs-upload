@@ -9,16 +9,16 @@ import os from 'os';
 
 const argv = mri(process.argv.slice(2), {
     boolean: ['help'],
-    string: ['network', 'account-id', 'private-key', 'gateway-url', 'node-url'],
+    string: ['network', 'accountId', 'privateKey', 'gatewayUrl', 'nodeUrl'],
     alias: {
         h: 'help',
         n: 'network',
-        a: 'account-id',
-        k: 'private-key',
-        accountId: 'account-id',
-        privateKey: 'private-key',
-        gatewayUrl: 'gateway-url',
-        nodeUrl: 'node-url'
+        a: 'accountId',
+        k: 'privateKey',
+        'account-id': 'accountId',
+        'private-key': 'privateKey', 
+        'gateway-url': 'gatewayUrl',
+        'node-url': 'nodeUrl'
     },
     default: {
         network: 'testnet'
