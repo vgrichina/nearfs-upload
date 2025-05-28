@@ -1,6 +1,6 @@
 {
   "name": "nearfs-upload",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "A package to upload files to NEARFS via NEAR transactions or web4",
   "main": "index.js",
   "type": "module",
