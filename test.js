@@ -11,6 +11,50 @@ const __dirname = path.dirname(__filename);
 
 const HELLO_CAR_FILE = path.join(__dirname, 'test/data', 'hello.car');
 
+// Helper function to run CLI commands and capture output
+async function runCLI(args, options = {}) {
+  const { spawn } = await import('child_process');
+  const { timeout = 30000, env = {} } = options;
+  
+  return new Promise((resolve) => {
+    const child = spawn('node', ['cli.js', ...args], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout,
+      env: { ...process.env, ...env }
+    });
+    
+    let stdout = '';
+    let stderr = '';
+    
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+    
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    
+    child.on('close', (code) => {
+      resolve({ 
+        code, 
+        stdout: stdout.trim(), 
+        stderr: stderr.trim(),
+        success: code === 0
+      });
+    });
+    
+    child.on('error', (error) => {
+      resolve({ 
+        code: -1, 
+        stdout: stdout.trim(), 
+        stderr: error.message,
+        success: false,
+        error
+      });
+    });
+  });
+}
+
 describe('NEARFS Uploader', () => {
   describe('splitOnBatches', () => {
     it('should split blocks into batches', () => {
@@ -252,6 +296,92 @@ describe('NEARFS Uploader', () => {
 
       mockConsoleError.mockRestore();
       mockConsoleLog.mockRestore();
+    });
+  });
+
+  describe('CLI Integration Tests', () => {
+    it('should display help when --help flag is used', async () => {
+      const result = await runCLI(['--help']);
+      
+      expect(result.success).toBe(true);
+      expect(result.stdout).toContain('Usage: nearfs-upload');
+      expect(result.stdout).toContain('Options:');
+    });
+
+    it('should display help when no arguments provided', async () => {
+      const result = await runCLI([]);
+      
+      expect(result.success).toBe(true);
+      expect(result.stdout).toContain('Usage: nearfs-upload');
+    });
+
+    it('should successfully upload to testnet with vg account', async () => {
+      const result = await runCLI([
+        'package.json', 
+        '--account-id', 'vg', 
+        '--network', 'testnet'
+      ]);
+      
+      console.log('=== Real Upload Test Results ===');
+      console.log('Exit Code:', result.code);
+      console.log('Success:', result.success);
+      console.log('STDOUT:\n', result.stdout);
+      if (result.stderr) {
+        console.log('STDERR:\n', result.stderr);
+      }
+      console.log('================================');
+      
+      // Assert successful upload
+      expect(result.success).toBe(true);
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain('Upload complete!');
+      expect(result.stdout).toContain('https://ipfs.web4.testnet.page/ipfs/');
+      expect(result.stdout).toContain('Uploaded 2 / 2 blocks to NEARFS');
+    });
+
+    it('should handle missing credentials gracefully', async () => {
+      const result = await runCLI([
+        'package.json', 
+        '--network', 'testnet'
+      ]);
+      
+      expect(result.success).toBe(false);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain('Missing credentials');
+    });
+
+    it('should handle invalid network', async () => {
+      const result = await runCLI([
+        'package.json', 
+        '--account-id', 'test.near',
+        '--private-key', 'ed25519:test',
+        '--network', 'invalidnetwork'
+      ]);
+      
+      expect(result.success).toBe(false);
+      expect(result.code).toBe(1);
+      // Should error about network not being mainnet/testnet or missing gateway URL
+    });
+
+    it('should handle help flag with short alias', async () => {
+      const result = await runCLI(['-h']);
+      
+      expect(result.success).toBe(true);
+      expect(result.stdout).toContain('Usage: nearfs-upload');
+    });
+
+    it('should test environment variable fallback', async () => {
+      const result = await runCLI(['package.json'], {
+        env: {
+          NEAR_ACCOUNT_ID: 'env.testnet',
+          NEAR_PRIVATE_KEY: 'ed25519:fake'
+        }
+      });
+      
+      // Should attempt to use env vars and fail at NEAR connection
+      // but not at credential validation stage
+      expect(result.success).toBe(false);
+      expect(result.stderr).not.toContain('Missing credentials');
     });
   });
 });
