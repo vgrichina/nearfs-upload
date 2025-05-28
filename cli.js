@@ -2,12 +2,12 @@
 
 import mri from 'mri';
 import { connect, keyStores, transactions, KeyPair } from 'near-api-js';
-import { uploadFiles, uploadCAR } from './index.js';
+import { executeUpload } from './index.js';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 
-const argv = mri(process.argv.slice(2), {
+const defaultMriConfig = {
     boolean: ['help'],
     string: ['network', 'accountId', 'privateKey', 'gatewayUrl', 'nodeUrl'],
     alias: {
@@ -23,7 +23,7 @@ const argv = mri(process.argv.slice(2), {
     default: {
         network: 'testnet'
     }
-});
+};
 
 const usage = `
   Usage: nearfs-upload [options] <path>
@@ -66,7 +66,7 @@ async function loadNearCliCredentials(networkId, accountId) {
     }
 }
 
-async function setupNearConnection(networkId, accountId, privateKey) {
+async function setupNearConnection(networkId, accountId, privateKey, nodeUrl) {
     // Try to get credentials in order of precedence
     let finalAccountId = accountId || process.env.NEAR_ACCOUNT_ID;
     let finalPrivateKey = privateKey || process.env.NEAR_PRIVATE_KEY;
@@ -95,7 +95,7 @@ async function setupNearConnection(networkId, accountId, privateKey) {
     const config = {
         networkId,
         keyStore,
-        nodeUrl: argv.nodeUrl || `https://rpc.${networkId}.near.org`,
+        nodeUrl: nodeUrl || `https://rpc.${networkId}.near.org`,
         logger: false
     };
 
@@ -106,27 +106,10 @@ async function setupNearConnection(networkId, accountId, privateKey) {
     };
 }
 
-async function readFilesRecursively(dir) {
-    const files = [];
-    const entries = await fs.readdir(dir, { withFileTypes: true });
 
-    for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-            files.push(...await readFilesRecursively(fullPath));
-        } else {
-            const content = await fs.readFile(fullPath);
-            files.push({
-                name: path.relative(dir, fullPath),
-                content: Buffer.from(content)
-            });
-        }
-    }
-
-    return files;
-}
-
-async function main() {
+async function main(rawArgv = process.argv.slice(2)) {
+    const argv = mri(rawArgv, defaultMriConfig);
+    
     if (argv.help || argv._.length === 0) {
         console.log(usage);
         process.exit(0);
@@ -141,79 +124,31 @@ async function main() {
     }
 
     try {
-        const { account, accountId } = await setupNearConnection(
+        const nearConnection = await setupNearConnection(
             argv.network,
             argv.accountId,
-            argv.privateKey
+            argv.privateKey,
+            argv.nodeUrl
         );
         
-        const signAndSendTransaction = async (blockDataArray) => {
-            try {
-                return await account.signAndSendTransaction({
-                    receiverId: accountId,
-                    actions: blockDataArray.map(data => 
-                        transactions.functionCall('fs_store', data, '30000000000000', '0')
-                    ),
-                });
-            } catch (error) {
-                // Ignore MethodNotFound error as it happens during success case
-                if (error.type === 'ActionError' && 
-                    error.kind?.kind?.FunctionCallError?.MethodResolveError === 'MethodNotFound') {
-                    return;
-                }
-                console.error('Error signing and sending transaction:', error);
-                throw error;
+        const { rootCid, gatewayUrl } = await executeUpload(
+            filePath,
+            nearConnection,
+            { 
+                network: argv.network, 
+                gatewayUrl: argv.gatewayUrl,
+                transactions 
             }
-        };
-
-        const options = {
-            signAndSendTransaction,
-            log: console.log,
-            statusCallback: ({ currentBlocks, totalBlocks }) => {
-                console.log(`Progress: ${currentBlocks}/${totalBlocks} blocks uploaded`);
-            }
-        };
-
-        let rootCid;
-        const isCarFile = path.extname(filePath).toLowerCase() === '.car';
-
-        if (isCarFile) {
-            const carBuffer = await fs.readFile(filePath);
-            rootCid = await uploadCAR(carBuffer, options);
-        } else {
-            const stats = await fs.stat(filePath);
-            const files = stats.isDirectory() 
-                ? await readFilesRecursively(filePath)
-                : [{
-                    name: path.basename(filePath),
-                    content: await fs.readFile(filePath)
-                  }];
-
-            rootCid = await uploadFiles(files, options);
-        }
-
-        console.log('\nUpload complete!');
-        let gatewayUrl;
-        let isCustomGateway = false;
-        if (argv.network === 'mainnet') {
-            gatewayUrl = 'https://ipfs.web4.near.page';
-        } else if (argv.network === 'testnet') {
-            gatewayUrl = 'https://ipfs.web4.testnet.page';
-        } else if (argv.gatewayUrl) {
-            gatewayUrl = argv.gatewayUrl;
-            isCustomGateway = true;
-        } else {
-            throw new Error('Network must be either "mainnet" or "testnet", or provide a custom gateway URL with --gateway-url');
-        }
-        console.log(`Access your files at: ${gatewayUrl}/ipfs/${rootCid}`);
-        if (!isCustomGateway) {
-            const gatewayDomain = gatewayUrl.replace('https://', '');
-            console.log(`Or via subdomain: https://${rootCid}.${gatewayDomain}`);
-        }
+        );
     } catch (error) {
         console.error('Error:', error.message);
         process.exit(1);
     }
 }
 
-main();
+// Only run if executed directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+    main();
+}
+
+export { main };

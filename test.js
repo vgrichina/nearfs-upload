@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { uploadFiles, uploadBlocks, splitOnBatches, isAlreadyUploaded, uploadCAR } from './index.js';
+import { uploadFiles, uploadBlocks, splitOnBatches, isAlreadyUploaded, uploadCAR, executeUpload, isExpectedNearError } from './index.js';
 import { packCID } from 'fast-ipfs';
 import { jest } from '@jest/globals';
 import fs from 'fs/promises';
@@ -110,6 +110,7 @@ describe('NEARFS Uploader', () => {
       expect(mockLog).toHaveBeenCalledWith('Uploaded 2 / 2 blocks to NEARFS');
       expect(mockStatusCallback).toHaveBeenCalledWith({ currentBlocks: 2, totalBlocks: 2 });
     });
+
   });
 
   describe('uploadCAR', () => {
@@ -146,6 +147,111 @@ describe('NEARFS Uploader', () => {
       const helloWorldBuffer = Buffer.from('Hello, World\n');
       const containsHelloWorld = submittedBuffers.some(buffer => buffer.includes(helloWorldBuffer));
       assert(containsHelloWorld, 'Submitted buffers should contain "Hello, World" content');
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should identify CodeDoesNotExist as expected error', () => {
+      const error = new Error('ServerTransactionError');
+      error.type = 'ActionError';
+      error.kind = {
+        index: 0,
+        kind: {
+          FunctionCallError: {
+            CompilationError: {
+              CodeDoesNotExist: {
+                account_id: 'test.near'
+              }
+            }
+          }
+        }
+      };
+      
+      expect(isExpectedNearError(error)).toBe(true);
+    });
+
+    it('should identify MethodNotFound as expected error', () => {
+      const error = new Error('ServerTransactionError');
+      error.type = 'ActionError';
+      error.kind = {
+        index: 0,
+        kind: {
+          FunctionCallError: {
+            MethodResolveError: 'MethodNotFound'
+          }
+        }
+      };
+      
+      expect(isExpectedNearError(error)).toBe(true);
+    });
+
+    it('should identify message-based errors as expected', () => {
+      const error1 = new Error('Cannot find contract code for account');
+      expect(isExpectedNearError(error1)).toBe(true);
+      
+      const error2 = new Error('Contract method is not found');
+      expect(isExpectedNearError(error2)).toBe(true);
+    });
+
+    it('should not identify other errors as expected', () => {
+      const error = new Error('Some other error');
+      error.type = 'ActionError';
+      expect(isExpectedNearError(error)).toBe(false);
+    });
+
+    it('should handle CodeDoesNotExist error gracefully in executeUpload', async () => {
+      const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const mockConsoleLog = jest.spyOn(console, 'log').mockImplementation(() => {});
+      
+      // Create fake NEAR connection with account that throws CodeDoesNotExist
+      const fakeNearConnection = {
+        account: {
+          signAndSendTransaction: jest.fn(() => {
+            const error = new Error('ServerTransactionError');
+            error.type = 'ActionError';
+            error.kind = {
+              index: 0,
+              kind: {
+                FunctionCallError: {
+                  CompilationError: {
+                    CodeDoesNotExist: {
+                      account_id: 'test.near'
+                    }
+                  }
+                }
+              }
+            };
+            throw error;
+          })
+        },
+        accountId: 'test.near'
+      };
+
+      const mockTransactions = {
+        functionCall: jest.fn(() => 'mock-action')
+      };
+
+      // Should complete without throwing
+      const result = await executeUpload(
+        'package.json', // Use existing file
+        fakeNearConnection,
+        { 
+          network: 'testnet',
+          transactions: mockTransactions
+        }
+      );
+
+      expect(result.rootCid).toBeDefined();
+      expect(result.gatewayUrl).toBe('https://ipfs.web4.testnet.page');
+      
+      // Verify console.error was NOT called with transaction error
+      expect(mockConsoleError).not.toHaveBeenCalledWith(
+        'Error signing and sending transaction:', 
+        expect.any(Object)
+      );
+
+      mockConsoleError.mockRestore();
+      mockConsoleLog.mockRestore();
     });
   });
 });

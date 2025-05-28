@@ -1,6 +1,8 @@
 import timeoutSignal from 'timeout-signal';
 import { cidToString, packCID, writePBNode, CODEC_RAW, CODEC_DAG_PB, readCAR, readBlock } from 'fast-ipfs';
 import sha256 from 'js-sha256';
+import fs from 'fs/promises';
+import path from 'path';
 
 const computeHash = (data) => Buffer.from(sha256.arrayBuffer(data));
 
@@ -58,9 +60,6 @@ function splitOnBatches(newBlocks) {
     return batches;
 }
 
-function isExpectedUploadError(e) {
-    return e.message.includes('Cannot find contract code for account') || e.message.includes('Contract method is not found');
-}
 
 async function uploadBlocks(blocks, options = DEFAULT_OPTIONS) {
     const { log, statusCallback, signAndSendTransaction } = { ...DEFAULT_OPTIONS, ...options };
@@ -74,13 +73,7 @@ async function uploadBlocks(blocks, options = DEFAULT_OPTIONS) {
     let currentBlocks = 0;
 
     for (let batch of batches) {
-        try {
-            await signAndSendTransaction(batch);
-        } catch (e) {
-            if (!isExpectedUploadError(e)) {
-                throw e;
-            }
-        }
+        await signAndSendTransaction(batch);
 
         currentBlocks += batch.length;
         log(`Uploaded ${currentBlocks} / ${totalBlocks} blocks to NEARFS`);
@@ -164,9 +157,124 @@ async function blocksToUpload(carBuffer, options = DEFAULT_OPTIONS) {
     return blocksAndStatus.filter(({ uploaded }) => !uploaded);
 }
 
+async function readFilesRecursively(dir) {
+    const files = [];
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+
+    for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            files.push(...await readFilesRecursively(fullPath));
+        } else {
+            const content = await fs.readFile(fullPath);
+            files.push({
+                name: path.relative(dir, fullPath),
+                content: Buffer.from(content)
+            });
+        }
+    }
+
+    return files;
+}
+
+function isExpectedNearError(error) {
+    // Ignore MethodNotFound error as it happens during success case
+    if (error.type === 'ActionError' && 
+        error.kind?.kind?.FunctionCallError?.MethodResolveError === 'MethodNotFound') {
+        return true;
+    }
+    
+    // Ignore CodeDoesNotExist error as it happens when account has no contract deployed
+    if (error.type === 'ActionError' && 
+        error.kind?.kind?.FunctionCallError?.CompilationError?.CodeDoesNotExist) {
+        return true;
+    }
+    
+    // Handle message-based error patterns
+    if (error.message && (
+        error.message.includes('Cannot find contract code for account') ||
+        error.message.includes('Contract method is not found')
+    )) {
+        return true;
+    }
+    
+    return false;
+}
+
+export async function executeUpload(filePath, nearConnection, options = {}) {
+    const { account, accountId } = nearConnection;
+    const { network, gatewayUrl: customGatewayUrl, transactions } = options;
+    
+    // Create signAndSendTransaction with error handling
+    const signAndSendTransaction = async (blockDataArray) => {
+        try {
+            return await account.signAndSendTransaction({
+                receiverId: accountId,
+                actions: blockDataArray.map(data => 
+                    transactions.functionCall('fs_store', data, '30000000000000', '0')
+                ),
+            });
+        } catch (error) {
+            if (isExpectedNearError(error)) {
+                return;
+            }
+            console.error('Error signing and sending transaction:', error);
+            throw error;
+        }
+    };
+
+    const uploadOptions = {
+        signAndSendTransaction,
+        log: console.log,
+        statusCallback: ({ currentBlocks, totalBlocks }) => {
+            console.log(`Progress: ${currentBlocks}/${totalBlocks} blocks uploaded`);
+        }
+    };
+
+    let rootCid;
+    const isCarFile = path.extname(filePath).toLowerCase() === '.car';
+
+    if (isCarFile) {
+        const carBuffer = await fs.readFile(filePath);
+        rootCid = await uploadCAR(carBuffer, uploadOptions);
+    } else {
+        const stats = await fs.stat(filePath);
+        const files = stats.isDirectory() 
+            ? await readFilesRecursively(filePath)
+            : [{
+                name: path.basename(filePath),
+                content: await fs.readFile(filePath)
+              }];
+
+        rootCid = await uploadFiles(files, uploadOptions);
+    }
+
+    console.log('\nUpload complete!');
+    let gatewayUrl;
+    let isCustomGateway = false;
+    if (network === 'mainnet') {
+        gatewayUrl = 'https://ipfs.web4.near.page';
+    } else if (network === 'testnet') {
+        gatewayUrl = 'https://ipfs.web4.testnet.page';
+    } else if (customGatewayUrl) {
+        gatewayUrl = customGatewayUrl;
+        isCustomGateway = true;
+    } else {
+        throw new Error('Network must be either "mainnet" or "testnet", or provide a custom gateway URL with --gateway-url');
+    }
+    console.log(`Access your files at: ${gatewayUrl}/ipfs/${rootCid}`);
+    if (!isCustomGateway) {
+        const gatewayDomain = gatewayUrl.replace('https://', '');
+        console.log(`Or via subdomain: https://${rootCid}.${gatewayDomain}`);
+    }
+
+    return { rootCid, gatewayUrl };
+}
+
 export {
     isAlreadyUploaded,
     blocksToUpload,
     splitOnBatches,
     uploadBlocks,
+    isExpectedNearError,
 };
