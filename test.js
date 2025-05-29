@@ -194,6 +194,80 @@ describe('NEARFS Uploader', () => {
     });
   });
 
+  describe('Deduplication Bug', () => {
+    it('should properly pass gatewayUrl to isAlreadyUploaded in executeUpload', async () => {
+      const mockConsoleLog = jest.spyOn(console, 'log').mockImplementation(() => {});
+      
+      // Mock fetch to track what URLs are being called
+      const fetchCalls = [];
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn((url, options) => {
+        console.log('FETCH CALLED WITH:', url);
+        fetchCalls.push(url);
+        return Promise.resolve({ status: 404 }); // Simulate not found
+      });
+
+      // Create fake NEAR connection
+      const fakeNearConnection = {
+        account: {
+          signAndSendTransaction: jest.fn(() => Promise.resolve())
+        },
+        accountId: 'test.near'
+      };
+
+      const mockTransactions = {
+        functionCall: jest.fn(() => 'mock-action')
+      };
+
+      await executeUpload(
+        'package.json',
+        fakeNearConnection,
+        { 
+          network: 'testnet',
+          transactions: mockTransactions
+        }
+      );
+
+      console.log('Total fetch calls:', fetchCalls.length);
+      console.log('Fetch calls:', fetchCalls);
+
+      // Verify that fetch was called with proper gateway URL
+      expect(fetchCalls.length).toBeGreaterThan(0);
+      if (fetchCalls.length > 0) {
+        expect(fetchCalls[0]).toMatch(/^https:\/\/ipfs\.web4\.testnet\.page\/ipfs\/baf/);
+        expect(fetchCalls[0]).not.toContain('undefined');
+      }
+
+      global.fetch = originalFetch;
+      mockConsoleLog.mockRestore();
+    });
+
+    it('should fail when options are missing required fields for isAlreadyUploaded', async () => {
+      const cid = packCID({ hash: Buffer.alloc(32, 1), version: 1, codec: 0x55 });
+      
+      // Mock fetch to track what URLs are being called
+      const fetchCalls = [];
+      global.fetch = jest.fn((url, options) => {
+        fetchCalls.push(url);
+        return Promise.resolve({ status: 404 });
+      });
+
+      const mockLog = jest.fn();
+      
+      // Call with incomplete options (missing gatewayUrl)
+      const result = await isAlreadyUploaded(cid, { 
+        log: mockLog,
+        timeout: 2500,
+        retryCount: 3
+        // gatewayUrl is missing!
+      });
+
+      // Should return false and have made invalid fetch call
+      expect(result).toBe(false);
+      expect(fetchCalls[0]).toContain('undefined/ipfs/');
+    });
+  });
+
   describe('Error Handling', () => {
     it('should identify CodeDoesNotExist as expected error', () => {
       const error = new Error('ServerTransactionError');
@@ -336,7 +410,7 @@ describe('NEARFS Uploader', () => {
       expect(result.code).toBe(0);
       expect(result.stdout).toContain('Upload complete!');
       expect(result.stdout).toContain('https://ipfs.web4.testnet.page/ipfs/');
-      expect(result.stdout).toContain('Uploaded 2 / 2 blocks to NEARFS');
+      expect(result.stdout).toMatch(/(Uploaded \d+ \/ \d+ blocks to NEARFS|already exists on chain, skipping)/);
     });
 
     it('should handle missing credentials gracefully', async () => {

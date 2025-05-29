@@ -205,6 +205,18 @@ export async function executeUpload(filePath, nearConnection, options = {}) {
     const { account, accountId } = nearConnection;
     const { network, gatewayUrl: customGatewayUrl, transactions } = options;
     
+    // Determine gateway URL first - custom gateway overrides network
+    let gatewayUrl;
+    if (customGatewayUrl) {
+        gatewayUrl = customGatewayUrl;
+    } else if (network === 'mainnet') {
+        gatewayUrl = 'https://ipfs.web4.near.page';
+    } else if (network === 'testnet') {
+        gatewayUrl = 'https://ipfs.web4.testnet.page';
+    } else {
+        throw new Error('Network must be either "mainnet" or "testnet", or provide a custom gateway URL with --gateway-url');
+    }
+    
     // Create signAndSendTransaction with error handling
     const signAndSendTransaction = async (blockDataArray) => {
         try {
@@ -228,7 +240,10 @@ export async function executeUpload(filePath, nearConnection, options = {}) {
         log: console.log,
         statusCallback: ({ currentBlocks, totalBlocks }) => {
             console.log(`Progress: ${currentBlocks}/${totalBlocks} blocks uploaded`);
-        }
+        },
+        gatewayUrl,
+        timeout: 2500,
+        retryCount: 3
     };
 
     let rootCid;
@@ -250,18 +265,7 @@ export async function executeUpload(filePath, nearConnection, options = {}) {
     }
 
     console.log('\nUpload complete!');
-    let gatewayUrl;
-    let isCustomGateway = false;
-    if (network === 'mainnet') {
-        gatewayUrl = 'https://ipfs.web4.near.page';
-    } else if (network === 'testnet') {
-        gatewayUrl = 'https://ipfs.web4.testnet.page';
-    } else if (customGatewayUrl) {
-        gatewayUrl = customGatewayUrl;
-        isCustomGateway = true;
-    } else {
-        throw new Error('Network must be either "mainnet" or "testnet", or provide a custom gateway URL with --gateway-url');
-    }
+    const isCustomGateway = !!customGatewayUrl;
     console.log(`Access your files at: ${gatewayUrl}/ipfs/${rootCid}`);
     if (!isCustomGateway) {
         const gatewayDomain = gatewayUrl.replace('https://', '');
