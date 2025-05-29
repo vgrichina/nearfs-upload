@@ -17,7 +17,7 @@ async function runCLI(args, options = {}) {
   const { timeout = 30000, env = {} } = options;
   
   return new Promise((resolve) => {
-    const child = spawn('node', ['cli.js', ...args], {
+    const child = spawn('./bin/nearfs-upload', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout,
       env: { ...process.env, ...env }

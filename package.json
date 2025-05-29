@@ -27,6 +27,6 @@
     "jest": "^27.0.0"
   },
   "bin": {
-    "nearfs-upload": "./cli.js"
+    "nearfs-upload": "./bin/nearfs-upload"
   }
 }

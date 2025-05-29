@@ -146,9 +146,4 @@ async function main(rawArgv = process.argv.slice(2)) {
     }
 }
 
-// Only run if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
-    main();
-}
-
 export { main };
