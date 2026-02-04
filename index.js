@@ -1,4 +1,3 @@
-import timeoutSignal from 'timeout-signal';
 import { cidToString, packCID, writePBNode, CODEC_RAW, CODEC_DAG_PB, readCAR, readBlock } from 'fast-ipfs';
 import sha256 from 'js-sha256';
 import fs from 'fs/promises';
@@ -23,7 +22,7 @@ async function isAlreadyUploaded(cid, options = DEFAULT_OPTIONS) {
     const urlToCheck = `${gatewayUrl}/ipfs/${cid32}`;
     for (let i = 0; i < retryCount; i++) {
         try {
-            const res = await fetch(urlToCheck, { method: 'HEAD', signal: timeoutSignal(timeout) });
+            const res = await fetch(urlToCheck, { method: 'HEAD', signal: AbortSignal.timeout(timeout) });
             if (res.status === 200) {
                 log('Block', cid32, 'already exists on chain, skipping');
                 return true;
