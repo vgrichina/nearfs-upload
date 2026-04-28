@@ -3,6 +3,7 @@ import { uploadFiles, uploadBlocks, splitOnBatches, isAlreadyUploaded, uploadCAR
 import { packCID } from 'fast-ipfs';
 import { jest } from '@jest/globals';
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -456,6 +457,88 @@ describe('NEARFS Uploader', () => {
       // but not at credential validation stage
       expect(result.success).toBe(false);
       expect(result.stderr).not.toContain('Missing credentials');
+    });
+  });
+
+  describe('uploadCAR returns root CID', () => {
+    it('should return the CAR root CID, not undefined', async () => {
+      const carData = await fs.readFile(HELLO_CAR_FILE);
+      const rootCid = await uploadCAR(carData, {
+        signAndSendTransaction: async () => {},
+        log: () => {},
+        statusCallback: () => {},
+      });
+      // hello.car has a known root CID (CIDv0 dag-pb sha256).
+      assert.ok(rootCid, 'uploadCAR should return a root CID string');
+      assert.notStrictEqual(rootCid, 'undefined');
+      // fast-ipfs encodes all CIDs (including v0) as base32 — prefix is 'b'.
+      assert.match(rootCid, /^[Qb]/, `should be a valid CID string, got: ${rootCid}`);
+    });
+  });
+
+  describe('executeUpload with CAR file produces valid URL', () => {
+    it('should not include "undefined" in printed URLs', async () => {
+      const logs = [];
+      const origLog = console.log;
+      console.log = (...args) => { logs.push(args.map(String).join(' ')); };
+      try {
+        const fakeNearConnection = {
+          account: { signAndSendTransaction: async () => {} },
+          accountId: 'test.near',
+        };
+        const mockTransactions = { functionCall: () => 'mock-action' };
+        const result = await executeUpload(HELLO_CAR_FILE, fakeNearConnection, {
+          network: 'testnet',
+          transactions: mockTransactions,
+        });
+        assert.ok(result.rootCid, 'rootCid must be defined');
+        assert.notStrictEqual(result.rootCid, 'undefined');
+        const urlLogs = logs.filter(l => l.includes('https://'));
+        assert.ok(urlLogs.length > 0, 'should log access URLs');
+        urlLogs.forEach(l => {
+          assert.ok(!l.includes('undefined'), `URL should not contain "undefined": ${l}`);
+        });
+      } finally {
+        console.log = origLog;
+      }
+    });
+  });
+
+  describe('readFilesRecursively preserves subdirectory paths', () => {
+    it('files in subdirectories should retain their relative path', async () => {
+      const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'nearfs-test-'));
+      try {
+        await fs.writeFile(path.join(tmp, 'top.txt'), 'top-content');
+        await fs.mkdir(path.join(tmp, 'sub'));
+        await fs.writeFile(path.join(tmp, 'sub', 'nested.txt'), 'nested-content');
+
+        let rootDir;
+        const origLog = console.log;
+        console.log = (label, val) => { if (label === 'rootDir') rootDir = val; };
+        try {
+          const fakeNear = {
+            account: { signAndSendTransaction: async () => {} },
+            accountId: 'test.near',
+          };
+          await executeUpload(tmp, fakeNear, {
+            network: 'testnet',
+            transactions: { functionCall: () => 'mock-action' },
+          });
+        } finally { console.log = origLog; }
+
+        assert.ok(rootDir, 'rootDir log should have been emitted');
+        const names = rootDir.links.map(l => l.name).sort();
+        assert.deepStrictEqual(names, ['sub', 'top.txt'],
+          `root should contain top.txt and sub/, got: ${JSON.stringify(names)}`);
+        const subEntry = rootDir.links.find(l => l.name === 'sub');
+        assert.ok(subEntry, 'sub directory entry must exist');
+        assert.ok(Array.isArray(subEntry.links), 'sub must be a directory (have links array)');
+        const subNames = subEntry.links.map(l => l.name);
+        assert.deepStrictEqual(subNames, ['nested.txt'],
+          `sub should contain nested.txt, got: ${JSON.stringify(subNames)}`);
+      } finally {
+        await fs.rm(tmp, { recursive: true, force: true });
+      }
     });
   });
 });

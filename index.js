@@ -1,4 +1,4 @@
-import { cidToString, packCID, writePBNode, CODEC_RAW, CODEC_DAG_PB, readCAR, readBlock } from 'fast-ipfs';
+import { cidToString, packCID, readCID, writePBNode, CODEC_RAW, CODEC_DAG_PB, readCAR, readBlock } from 'fast-ipfs';
 import sha256 from 'js-sha256';
 import fs from 'fs/promises';
 import path from 'path';
@@ -136,13 +136,43 @@ export async function uploadFiles(files, options = DEFAULT_OPTIONS) {
     return cidToString(rootCid);
 }
 
+function readCarRoots(headerBytes) {
+    // Minimal CBOR scan for `tag(42) bytes(...)` entries inside the CAR v1 header map.
+    // Each CID in the header is encoded as: 0xd8 0x2a (tag 42) + byte string starting with
+    // 0x00 (identity multibase prefix) + raw CID bytes. We only need to extract the CIDs.
+    const roots = [];
+    for (let i = 0; i < headerBytes.length - 2; i++) {
+        if (headerBytes[i] !== 0xd8 || headerBytes[i + 1] !== 0x2a) continue;
+        let off = i + 2;
+        const initialByte = headerBytes[off++];
+        const major = initialByte >> 5;
+        if (major !== 2) continue; // not a byte string
+        const ai = initialByte & 0x1f;
+        let len;
+        if (ai < 24) { len = ai; }
+        else if (ai === 24) { len = headerBytes[off++]; }
+        else if (ai === 25) { len = headerBytes.readUInt16BE(off); off += 2; }
+        else if (ai === 26) { len = headerBytes.readUInt32BE(off); off += 4; }
+        else continue;
+        const bs = headerBytes.subarray(off, off + len);
+        // Strip leading 0x00 multibase identity prefix.
+        const cidBytes = bs[0] === 0x00 ? bs.subarray(1) : bs;
+        const { version, codec, hash } = readCID(cidBytes);
+        roots.push(packCID({ version, codec, hash }));
+    }
+    return roots;
+}
+
 export async function uploadCAR(carBuffer, options = DEFAULT_OPTIONS) {
     const { log } = options;
 
     log('Uploading CAR file to NEAR File System...');
 
+    const carEntries = readCAR(carBuffer);
+    const roots = carEntries.length > 0 ? readCarRoots(carEntries[0].data) : [];
     const blocks = await blocksToUpload(carBuffer, options);
-    return await uploadBlocks(blocks, options);
+    await uploadBlocks(blocks, options);
+    return roots.length > 0 ? cidToString(roots[0]) : undefined;
 }
 
 async function blocksToUpload(carBuffer, options = DEFAULT_OPTIONS) {
@@ -156,18 +186,20 @@ async function blocksToUpload(carBuffer, options = DEFAULT_OPTIONS) {
     return blocksAndStatus.filter(({ uploaded }) => !uploaded);
 }
 
-async function readFilesRecursively(dir) {
+async function readFilesRecursively(dir, rootDir = dir) {
     const files = [];
     const entries = await fs.readdir(dir, { withFileTypes: true });
 
     for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);
         if (entry.isDirectory()) {
-            files.push(...await readFilesRecursively(fullPath));
+            files.push(...await readFilesRecursively(fullPath, rootDir));
         } else {
             const content = await fs.readFile(fullPath);
+            // Always normalize to forward slashes — uploadFiles splits on '/'.
+            const relPath = path.relative(rootDir, fullPath).split(path.sep).join('/');
             files.push({
-                name: path.relative(dir, fullPath),
+                name: relPath,
                 content: Buffer.from(content)
             });
         }
@@ -280,4 +312,6 @@ export {
     splitOnBatches,
     uploadBlocks,
     isExpectedNearError,
+    readFilesRecursively,
+    readCarRoots,
 };
