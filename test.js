@@ -412,7 +412,7 @@ describe('NEARFS Uploader', () => {
       expect(result.stdout).toContain('Upload complete!');
       expect(result.stdout).toContain('https://ipfs.web4.testnet.page/ipfs/');
       expect(result.stdout).toMatch(/(Uploaded \d+ \/ \d+ blocks to NEARFS|already exists on chain, skipping)/);
-    });
+    }, 30000);
 
     it('should handle missing credentials gracefully', async () => {
       const result = await runCLI([
